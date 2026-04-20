@@ -2,8 +2,7 @@ from agent import create_agent
 
 agent = create_agent()
 
-print("🚀 LangGraph AI Agent Ready! Type 'exit' to quit.\n")
-
+print("🤖 AI Agent is live! Ask me anything (type 'exit' to quit)\n")
 while True:
     query = input("You: ")
     if query.lower() == "exit":
