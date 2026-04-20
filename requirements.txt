@@ -1,0 +1,11 @@
+langchain
+openai
+faiss-cpu
+chromadb
+pypdf
+duckduckgo-search
+streamlit
+
+
+
+apikey- "AIzaSyBhPR5XdVyybGUkd-jv4pSQmvCNuqn2Oro"
