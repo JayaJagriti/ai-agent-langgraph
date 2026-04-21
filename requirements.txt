@@ -1,11 +1,11 @@
+streamlit
 langchain
-openai
+langchain-community
+langchain-core
 faiss-cpu
-chromadb
 pypdf
 duckduckgo-search
-streamlit
-
-
-
-apikey- "AIzaSyBhPR5XdVyybGUkd-jv4pSQmvCNuqn2Oro"
+groq
+gtts
+SpeechRecognition
+python-dotenv
