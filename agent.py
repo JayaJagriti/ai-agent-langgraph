@@ -1,159 +1,135 @@
-import os
-from dotenv import load_dotenv
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
-from langchain_community.tools import DuckDuckGoSearchRun
+import os
 from groq import Groq
-
-from rag import debug_retrieval
+from dotenv import load_dotenv
 
 load_dotenv()
 
-# ---------------- LLM ----------------
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# ---------------- WEB TOOL ----------------
-search = DuckDuckGoSearchRun()
 
-# ---------------- STATE ----------------
 class AgentState(TypedDict):
     query: str
     result: str
     retriever: object
+    history: list
+    tool: str
 
 
 # ---------------- ROUTER ----------------
-def router(state: AgentState):
-    query = state["query"].lower()
+def decide_tool(query, has_retriever, history):
+    history_text = "\n".join([h["content"] for h in history[-4:]])
 
-    # 🔥 smart routing
-    if state.get("retriever"):
-        if any(word in query for word in [
-            "document", "pdf", "file", "explain", "summarize", "according"
-        ]):
-            return "rag"
+    prompt = f"""
+You are an intelligent AI router.
 
-    if any(word in query for word in [
-        "latest", "news", "today", "current", "who is", "what is happening"
-    ]):
+Conversation:
+{history_text}
+
+User Query: {query}
+
+Choose best tool:
+- rag → if document related
+- web → if latest/current info
+- llm → normal/general
+
+Return ONLY one word: rag / web / llm
+"""
+
+    res = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    out = res.choices[0].message.content.lower()
+
+    if "rag" in out:
+        return "rag"
+    elif "web" in out:
         return "web"
-
     return "llm"
 
 
-# ---------------- RAG NODE ----------------
+def router_node(state: AgentState):
+    tool = decide_tool(
+        state["query"],
+        state.get("retriever") is not None,
+        state.get("history", [])
+    )
+    return {"tool": tool}
+
+
+# ---------------- LLM ----------------
+def llm_node(state: AgentState):
+    messages = state["history"] + [
+        {"role": "user", "content": state["query"]}
+    ]
+
+    res = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=messages
+    )
+
+    return {"result": res.choices[0].message.content}
+
+
+# ---------------- RAG ----------------
 def rag_node(state: AgentState):
     retriever = state.get("retriever")
 
     if not retriever:
         return {"result": "No document loaded."}
 
-    docs = retriever.get_relevant_documents(state["query"])
+    docs = retriever.invoke(state["query"])
 
     if not docs:
-        return {"result": "No relevant info found in document."}
+        docs = retriever.invoke("summary of document")
 
-    # 🔥 keep top 3 only
-    docs = docs[:3]
+    context = "\n".join([d.page_content for d in docs])
 
-    # 🔍 debug
-    debug_retrieval(docs)
+    messages = state["history"] + [
+        {
+            "role": "user",
+            "content": f"""
+Answer using the context below:
 
-    context = "\n\n".join([d.page_content for d in docs])
-
-    if len(context.strip()) < 50:
-        return {"result": "I could not find this in the document."}
-
-    prompt = f"""
-You are a strict document assistant.
-
-Rules:
-- ONLY use the context
-- NO guessing
-- NO outside knowledge
-- If unclear → say "Not found in document"
-
-CONTEXT:
 {context}
 
-QUESTION:
-{state['query']}
+Question: {state["query"]}
 """
+        }
+    ]
 
-    response = client.chat.completions.create(
+    res = client.chat.completions.create(
         model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": prompt}]
+        messages=messages
     )
 
-    return {"result": response.choices[0].message.content}
+    return {"result": res.choices[0].message.content}
 
 
-# ---------------- WEB NODE ----------------
-def web_node(state: AgentState):
-    try:
-        result = search.run(state["query"])
-
-        prompt = f"""
-Use the web result below to answer clearly:
-
-{result}
-
-Question: {state['query']}
-"""
-
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        return {"result": response.choices[0].message.content}
-
-    except:
-        return {"result": "Web search failed."}
-
-
-# ---------------- LLM NODE ----------------
-def llm_node(state: AgentState):
-    response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a helpful, smart AI assistant."
-            },
-            {
-                "role": "user",
-                "content": state["query"]
-            }
-        ]
-    )
-
-    return {"result": response.choices[0].message.content}
-
-
-# ---------------- BUILD AGENT ----------------
+# ---------------- GRAPH ----------------
 def create_agent():
-    builder = StateGraph(AgentState)
+    graph = StateGraph(AgentState)
 
-    builder.add_node("router", lambda state: state)
-    builder.add_node("rag", rag_node)
-    builder.add_node("web", web_node)
-    builder.add_node("llm", llm_node)
+    graph.add_node("router", router_node)
+    graph.add_node("llm", llm_node)
+    graph.add_node("rag", rag_node)
 
-    builder.set_entry_point("router")
+    graph.set_entry_point("router")
 
-    builder.add_conditional_edges(
+    graph.add_conditional_edges(
         "router",
-        router,
+        lambda s: s["tool"],
         {
+            "llm": "llm",
             "rag": "rag",
-            "web": "web",
-            "llm": "llm"
+            "web": "llm"  # fallback
         }
     )
 
-    builder.add_edge("rag", END)
-    builder.add_edge("web", END)
-    builder.add_edge("llm", END)
+    graph.add_edge("llm", END)
+    graph.add_edge("rag", END)
 
-    return builder.compile()
+    return graph.compile()
