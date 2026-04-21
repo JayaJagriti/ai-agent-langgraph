@@ -5,7 +5,7 @@ from agent import create_agent
 st.set_page_config(page_title="AI Agent", page_icon="🤖")
 
 # Title
-st.title("🤖 AI Agent (LangGraph + Groq)")
+st.title("✨ Your Personal AI Assistant")
 
 # Input box
 query = st.text_input("Ask something:")

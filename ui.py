@@ -1,5 +1,5 @@
 import streamlit as st
-from agent import create_agent
+from agent import run_agent
 from rag import load_base_knowledge, add_user_pdf, get_retriever
 from memory import save_message, load_history
 import time
@@ -16,7 +16,6 @@ if "retriever" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-agent = create_agent()
 user_id = "default_user"
 
 # ---------------- CSS ----------------
@@ -129,14 +128,12 @@ if user_input:
     time.sleep(0.3)
     thinking.empty()
 
-    # Agent call
-    response = agent.invoke({
-        "query": user_input,
-        "retriever": st.session_state.retriever,
-        "history": history
-    })
-
-    result = response["result"]
+    # ---------------- AGENT CALL (FIXED) ----------------
+    result = run_agent(
+        user_input,
+        retriever=st.session_state.retriever,
+        history=history
+    )
 
     # Typing effect
     display = ""
@@ -150,7 +147,7 @@ if user_input:
         )
         time.sleep(0.002)
 
-    # 🔊 SAFE BUTTON-BASED AUDIO (NO AUTO BUGS)
+    # 🔊 Voice button
     if st.button("🔊 Play Voice"):
         audio_path = speak(result)
         st.audio(audio_path, format="audio/mp3")

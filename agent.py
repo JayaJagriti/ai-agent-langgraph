@@ -4,11 +4,14 @@ import os
 from groq import Groq
 from dotenv import load_dotenv
 
+# Load env
 load_dotenv()
 
+# Initialize Groq
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 
+# ---------------- STATE ----------------
 class AgentState(TypedDict):
     query: str
     result: str
@@ -62,7 +65,7 @@ def router_node(state: AgentState):
 
 # ---------------- LLM ----------------
 def llm_node(state: AgentState):
-    messages = state["history"] + [
+    messages = state.get("history", []) + [
         {"role": "user", "content": state["query"]}
     ]
 
@@ -88,7 +91,7 @@ def rag_node(state: AgentState):
 
     context = "\n".join([d.page_content for d in docs])
 
-    messages = state["history"] + [
+    messages = state.get("history", []) + [
         {
             "role": "user",
             "content": f"""
@@ -133,3 +136,16 @@ def create_agent():
     graph.add_edge("rag", END)
 
     return graph.compile()
+
+
+# ---------------- RUN FUNCTION (IMPORTANT FIX) ----------------
+def run_agent(query, retriever=None, history=None):
+    agent = create_agent()
+
+    result = agent.invoke({
+        "query": query,
+        "retriever": retriever,
+        "history": history or []
+    })
+
+    return result["result"]
