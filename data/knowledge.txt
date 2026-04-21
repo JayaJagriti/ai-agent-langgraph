@@ -1,0 +1,106 @@
+========================
+AI AGENT SYSTEM OVERVIEW
+========================
+
+This system is an intelligent AI Agent designed to answer user queries using three main capabilities:
+1. Retrieval-Augmented Generation (RAG)
+2. Web Search Integration
+3. Direct Language Model Responses
+
+The agent dynamically selects the best source of information based on the user query.
+
+----------------------------------------
+
+RAG (RETRIEVAL AUGMENTED GENERATION)
+----------------------------------------
+
+The system uses RAG to answer questions based on internal documents.
+
+Key features:
+- Documents are converted into vector embeddings
+- Stored in a FAISS vector database
+- Retrieved using semantic similarity search
+
+Supported documents:
+- PDF files
+- Text-based knowledge files
+
+Use cases:
+- Explaining uploaded PDFs
+- Answering questions from company knowledge base
+- Context-aware responses
+
+----------------------------------------
+
+WEB SEARCH CAPABILITY
+----------------------------------------
+
+The agent uses DuckDuckGo search for real-time information.
+
+Use cases:
+- Latest news
+- Current events
+- External information not present in internal knowledge
+
+The results are summarized using a language model before being shown to the user.
+
+----------------------------------------
+
+LANGUAGE MODEL (LLM)
+----------------------------------------
+
+The system uses Groq LLM (LLaMA 3.1 8B Instant).
+
+Use cases:
+- Casual conversation
+- General knowledge
+- When no external data is required
+
+----------------------------------------
+
+AGENT DECISION LOGIC
+----------------------------------------
+
+The agent automatically decides how to respond:
+
+- Uses RAG when the query relates to documents
+- Uses Web Search for real-time or external queries
+- Uses LLM for general or conversational queries
+
+This makes the system adaptive and intelligent.
+
+----------------------------------------
+
+SYSTEM ARCHITECTURE
+----------------------------------------
+
+User Query → Agent → Decision Layer → (RAG / Web / LLM) → Response
+
+----------------------------------------
+
+ADVANTAGES OF THIS SYSTEM
+----------------------------------------
+
+- Reduces hallucination using RAG
+- Provides real-time answers using web search
+- Maintains conversational ability using LLM
+- Scalable and modular design
+
+----------------------------------------
+
+LIMITATIONS
+----------------------------------------
+
+- Depends on quality of uploaded documents
+- Web search results may include noise
+- No long-term memory across sessions (currently)
+
+----------------------------------------
+
+FUTURE IMPROVEMENTS
+----------------------------------------
+
+- Persistent vector database
+- Multi-step reasoning agent
+- Long-term conversational memory
+- Tool chaining (RAG + Web combined)

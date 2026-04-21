@@ -1,6 +1,6 @@
 import streamlit as st
 from agent import create_agent
-from rag import load_default_doc, add_user_pdf, get_retriever
+from rag import load_base_knowledge, add_user_pdf, get_retriever
 import time
 from gtts import gTTS
 import tempfile
@@ -10,7 +10,7 @@ st.set_page_config(page_title="AI AGENT", layout="wide")
 
 # ---------------- LOAD DEFAULT DOC ----------------
 if "retriever" not in st.session_state:
-    load_default_doc()
+    load_base_knowledge()
     st.session_state.retriever = get_retriever()
 
 # ---------------- CSS ----------------
