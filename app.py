@@ -1,20 +1,24 @@
+import streamlit as st
 from agent import create_agent
 
-agent = create_agent()
+# Page config
+st.set_page_config(page_title="AI Agent", page_icon="🤖")
 
-print("🤖 Autonomous AI Agent (type 'exit')")
+# Title
+st.title("🤖 AI Agent (LangGraph + Groq)")
 
-while True:
-    query = input("You: ")
+# Input box
+query = st.text_input("Ask something:")
 
-    if query.lower() == "exit":
-        break
-
-    response = agent.invoke({
-        "query": query,
-        "history": [],
-        "scratchpad": "",
-        "step": 0
-    })
-
-    print("AI:", response["result"])
+# Button (optional but cleaner UX)
+if st.button("Run Agent"):
+    if query:
+        with st.spinner("Thinking..."):
+            try:
+                response = create_agent(query)
+                st.success("Response:")
+                st.write(response)
+            except Exception as e:
+                st.error(f"Error: {e}")
+    else:
+        st.warning("Please enter a question.")
