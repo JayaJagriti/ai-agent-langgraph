@@ -1,9 +1,13 @@
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import FakeEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 
 vector_store = None
+
+embeddings = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/all-MiniLM-L6-v2"
+)
 
 
 def load_base_knowledge():
@@ -18,8 +22,6 @@ def load_base_knowledge():
     )
 
     chunks = splitter.split_documents(docs)
-
-    embeddings = FakeEmbeddings(size=1536)
 
     vector_store = FAISS.from_documents(chunks, embeddings)
 
@@ -37,8 +39,6 @@ def add_user_pdf(path):
 
     chunks = splitter.split_documents(docs)
 
-    embeddings = HuggingFaceEmbeddings()
-
     if vector_store is None:
         vector_store = FAISS.from_documents(chunks, embeddings)
     else:
@@ -47,5 +47,5 @@ def add_user_pdf(path):
 
 def get_retriever():
     if vector_store:
-        return vector_store.as_retriever(search_kwargs={"k": 4})
+        return vector_store.as_retriever(search_kwargs={"k": 3})
     return None

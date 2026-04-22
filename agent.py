@@ -4,12 +4,9 @@ import os
 from groq import Groq
 from dotenv import load_dotenv
 
-# Load env
+# ---------------- SETUP ----------------
 load_dotenv()
-
-# Initialize Groq
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-
 
 # ---------------- STATE ----------------
 class AgentState(TypedDict):
@@ -19,25 +16,25 @@ class AgentState(TypedDict):
     history: list
     tool: str
 
-
 # ---------------- ROUTER ----------------
 def decide_tool(query, has_retriever, history):
     history_text = "\n".join([h["content"] for h in history[-4:]])
 
     prompt = f"""
-You are an intelligent AI router.
+You are a smart AI router.
 
 Conversation:
 {history_text}
 
 User Query: {query}
 
-Choose best tool:
-- rag → if document related
-- web → if latest/current info
-- llm → normal/general
+Rules:
+- Use "rag" for company/internal data (meetings, employees, projects, policies)
+- Use "llm" for general/world knowledge
+- Prefer rag if unsure
 
-Return ONLY one word: rag / web / llm
+Return ONLY:
+rag or llm
 """
 
     res = client.chat.completions.create(
@@ -49,19 +46,16 @@ Return ONLY one word: rag / web / llm
 
     if "rag" in out:
         return "rag"
-    elif "web" in out:
-        return "web"
     return "llm"
 
-
 def router_node(state: AgentState):
-    tool = decide_tool(
-        state["query"],
-        state.get("retriever") is not None,
-        state.get("history", [])
-    )
-    return {"tool": tool}
-
+    return {
+        "tool": decide_tool(
+            state["query"],
+            state.get("retriever") is not None,
+            state.get("history", [])
+        )
+    }
 
 # ---------------- LLM ----------------
 def llm_node(state: AgentState):
@@ -76,28 +70,84 @@ def llm_node(state: AgentState):
 
     return {"result": res.choices[0].message.content}
 
-
-# ---------------- RAG ----------------
+# ---------------- RAG (SAFE + CHAINED) ----------------
 def rag_node(state: AgentState):
     retriever = state.get("retriever")
 
+    # No retriever → fallback
     if not retriever:
-        return {"result": "No document loaded."}
+        return llm_node(state)
 
     docs = retriever.invoke(state["query"])
 
-    if not docs:
-        docs = retriever.invoke("summary of document")
+    # ❌ No docs → fallback to LLM (general queries)
+    if not docs or len(docs) == 0:
+        return llm_node(state)
 
     context = "\n".join([d.page_content for d in docs])
 
+    # 🧠 STEP 1: Check if context actually answers question
+    check_prompt = f"""
+You are a strict validator.
+
+Context:
+{context}
+
+Question: {state["query"]}
+
+Does the context clearly contain the answer?
+
+Answer ONLY:
+YES or NO
+"""
+
+    check = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[{"role": "user", "content": check_prompt}]
+    )
+
+    decision = check.choices[0].message.content.strip().lower()
+
+    # ✅ CASE 1: GOOD RAG → answer strictly from context
+    if "yes" in decision:
+        messages = state.get("history", []) + [
+            {
+                "role": "user",
+                "content": f"""
+Answer ONLY from this internal knowledge.
+Do NOT make up anything.
+
+{context}
+
+Question: {state["query"]}
+"""
+            }
+        ]
+
+        res = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=messages
+        )
+
+        return {"result": res.choices[0].message.content}
+
+    # ❌ CASE 2: INTERNAL QUESTION BUT NOT FOUND → NO HALLUCINATION
+    if any(word in state["query"].lower() for word in [
+        "meeting", "employee", "project", "company", "policy"
+    ]):
+        return {
+            "result": "I could not find this information in the internal database."
+        }
+
+    # 🔥 CASE 3: GENERAL QUESTION → TOOL CHAINING (RAG + LLM)
     messages = state.get("history", []) + [
         {
             "role": "user",
             "content": f"""
-Answer using the context below:
-
+Internal data (may or may not help):
 {context}
+
+Use it if relevant. Otherwise answer using your knowledge.
 
 Question: {state["query"]}
 """
@@ -110,7 +160,6 @@ Question: {state["query"]}
     )
 
     return {"result": res.choices[0].message.content}
-
 
 # ---------------- GRAPH ----------------
 def create_agent():
@@ -128,7 +177,6 @@ def create_agent():
         {
             "llm": "llm",
             "rag": "rag",
-            "web": "llm"  # fallback
         }
     )
 
@@ -137,8 +185,7 @@ def create_agent():
 
     return graph.compile()
 
-
-# ---------------- RUN FUNCTION (IMPORTANT FIX) ----------------
+# ---------------- RUN ----------------
 def run_agent(query, retriever=None, history=None):
     agent = create_agent()
 
