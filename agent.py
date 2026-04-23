@@ -1,61 +1,45 @@
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
-import os
 from groq import Groq
-from dotenv import load_dotenv
-
-# Load env
-load_dotenv()
+import os
+from duckduckgo_search import DDGS
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # ---------------- STATE ----------------
 class AgentState(TypedDict):
     query: str
-    result: str
-    retriever: object
+    retriever: any
     history: list
-    tool: str
+    result: str
 
 
-# ---------------- ROUTER ----------------
-def decide_tool(query):
-    prompt = f"""
-You are a router.
-
-Choose:
-- rag → if answer is in internal company data
-- llm → for general knowledge or casual queries
-
-User Query: {query}
-
-Return ONLY: rag or llm
-"""
-
-    res = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    out = res.choices[0].message.content.lower()
-
-    if "rag" in out:
-        return "rag"
-    return "llm"
+# ---------------- SMALL TALK ----------------
+def is_small_talk(query: str):
+    query = query.lower()
+    return any(word in query for word in [
+        "hi", "hello", "hey", "how are you", "what's up"
+    ])
 
 
-def router_node(state: AgentState):
-    tool = decide_tool(state["query"])
-    return {"tool": tool}
+# ---------------- WEB SEARCH ----------------
+def web_search(query):
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=3))
+
+        if results:
+            return results[0]["body"]
+    except:
+        return "Web search failed."
+
+    return "No relevant web results found."
 
 
 # ---------------- LLM ----------------
 def llm_node(state: AgentState):
-    history = state.get("history", [])[-4:]  # 🔥 trim history
-
-    messages = history + [
-        {"role": "user", "content": state["query"]}
-    ]
+    messages = state.get("history", [])
+    messages.append({"role": "user", "content": state["query"]})
 
     res = client.chat.completions.create(
         model="llama-3.1-8b-instant",
@@ -65,39 +49,65 @@ def llm_node(state: AgentState):
     return {"result": res.choices[0].message.content}
 
 
-# ---------------- RAG ----------------
+# ---------------- RAG NODE ----------------
 def rag_node(state: AgentState):
+    query = state["query"]
     retriever = state.get("retriever")
 
-    if not retriever:
+    # 👉 small talk → LLM
+    if is_small_talk(query):
         return llm_node(state)
 
-    docs = retriever.invoke(state["query"])
+    # 👉 RAG first
+    if retriever:
+        docs = retriever.invoke(query)
 
-    if not docs:
-        return llm_node(state)
+        if docs:
+            context = "\n".join([d.page_content for d in docs])
 
-    context = "\n".join([d.page_content for d in docs])
+            res = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[{
+                    "role": "user",
+                    "content": f"""
+You are a helpful assistant.
 
-    history = state.get("history", [])[-4:]  # 🔥 trim history
+Use the context to answer the question.
+If the answer can be inferred, answer clearly.
 
-    messages = history + [
-        {
-            "role": "user",
-            "content": f"""
-Use the context if relevant, otherwise answer normally.
+If not present, say: "NOT_FOUND"
 
 Context:
 {context}
 
-Question: {state["query"]}
+Question:
+{query}
 """
-        }
-    ]
+                }]
+            )
+
+            answer = res.choices[0].message.content
+
+            # 👉 if not found → web search
+            if "NOT_FOUND" not in answer:
+                return {"result": answer}
+
+    # 👉 WEB SEARCH FALLBACK
+    web_result = web_search(query)
 
     res = client.chat.completions.create(
         model="llama-3.1-8b-instant",
-        messages=messages
+        messages=[{
+            "role": "user",
+            "content": f"""
+Answer using this web result:
+
+{web_result}
+
+Question:
+{query}
+"""
+        }]
     )
 
     return {"result": res.choices[0].message.content}
@@ -106,29 +116,13 @@ Question: {state["query"]}
 # ---------------- GRAPH ----------------
 def create_agent():
     graph = StateGraph(AgentState)
-
-    graph.add_node("router", router_node)
-    graph.add_node("llm", llm_node)
     graph.add_node("rag", rag_node)
-
-    graph.set_entry_point("router")
-
-    graph.add_conditional_edges(
-        "router",
-        lambda s: s["tool"],
-        {
-            "rag": "rag",
-            "llm": "llm"
-        }
-    )
-
+    graph.set_entry_point("rag")
     graph.add_edge("rag", END)
-    graph.add_edge("llm", END)
-
     return graph.compile()
 
 
-# ---------------- RUN FUNCTION ----------------
+# ---------------- RUN ----------------
 def run_agent(query, retriever=None, history=None):
     agent = create_agent()
 

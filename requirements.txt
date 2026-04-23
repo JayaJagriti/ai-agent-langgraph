@@ -1,11 +1,11 @@
 streamlit
 langchain
 langchain-community
-langchain-core
 langchain-text-splitters
+langchain-huggingface
 faiss-cpu
 sentence-transformers
-pypdf
-duckduckgo-search
 groq
 python-dotenv
+duckduckgo-search
+gtts
