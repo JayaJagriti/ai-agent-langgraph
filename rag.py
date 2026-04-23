@@ -1,51 +1,52 @@
+import os
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
-vector_store = None
 
-embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
-)
+def get_embeddings():
+    return HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2"
+    )
 
 
-def load_base_knowledge():
-    global vector_store
+def load_base_knowledge(pdf_path: str):
+    if not os.path.exists(pdf_path):
+        raise FileNotFoundError(f"PDF not found at {pdf_path}")
 
-    loader = PyPDFLoader("data/knowledge.pdf")
+    loader = PyPDFLoader(pdf_path)
     docs = loader.load()
 
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=800,
+        chunk_size=500,
         chunk_overlap=100
     )
 
     chunks = splitter.split_documents(docs)
 
-    vector_store = FAISS.from_documents(chunks, embeddings)
+    embeddings = get_embeddings()
+
+    db = FAISS.from_documents(chunks, embeddings)
+
+    return db
 
 
-def add_user_pdf(path):
-    global vector_store
-
-    loader = PyPDFLoader(path)
+def add_user_pdf(db, pdf_path: str):
+    loader = PyPDFLoader(pdf_path)
     docs = loader.load()
 
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=800,
+        chunk_size=500,
         chunk_overlap=100
     )
 
     chunks = splitter.split_documents(docs)
 
-    if vector_store is None:
-        vector_store = FAISS.from_documents(chunks, embeddings)
-    else:
-        vector_store.add_documents(chunks)
+    db.add_documents(chunks)
+
+    return db
 
 
-def get_retriever():
-    if vector_store:
-        return vector_store.as_retriever(search_kwargs={"k": 3})
-    return None
+def get_retriever(db):
+    return db.as_retriever(search_kwargs={"k": 3})

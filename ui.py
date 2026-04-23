@@ -9,9 +9,10 @@ import speech_recognition as sr
 st.set_page_config(page_title="AI AGENT", layout="wide")
 
 # ---------------- INIT ----------------
-if "retriever" not in st.session_state:
-    load_base_knowledge()
-    st.session_state.retriever = get_retriever()
+if "db" not in st.session_state:
+    db = load_base_knowledge("data/Knowledge.pdf")
+    st.session_state.db = db
+    st.session_state.retriever = get_retriever(db)
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -72,15 +73,17 @@ with st.sidebar:
         with open("temp.pdf", "wb") as f:
             f.write(uploaded.read())
 
-        add_user_pdf("temp.pdf")
-        st.session_state.retriever = get_retriever()
+        # ✅ FIXED: update DB properly
+        st.session_state.db = add_user_pdf(st.session_state.db, "temp.pdf")
+        st.session_state.retriever = get_retriever(st.session_state.db)
+
         st.success("✨ PDF merged!")
 
     if st.button("🧹 Clear Chat"):
         st.session_state.messages = []
         st.rerun()
 
-    # 🎤 safer voice input
+    # 🎤 Voice input
     if st.button("🎤 Speak"):
         try:
             r = sr.Recognizer()
@@ -104,9 +107,15 @@ def speak(text):
 # ---------------- DISPLAY ----------------
 for msg in st.session_state.messages:
     if msg["role"] == "user":
-        st.markdown(f"<div class='user-msg'>🧚‍♀️ {msg['content']}</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='user-msg'>🧚‍♀️ {msg['content']}</div>",
+            unsafe_allow_html=True
+        )
     else:
-        st.markdown(f"<div class='ai-msg'>🔮 {msg['content']}</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='ai-msg'>🔮 {msg['content']}</div>",
+            unsafe_allow_html=True
+        )
 
 # ---------------- INPUT ----------------
 user_input = st.chat_input("Ask something magical... ✨")
@@ -128,7 +137,7 @@ if user_input:
     time.sleep(0.3)
     thinking.empty()
 
-    # ---------------- AGENT CALL (FIXED) ----------------
+    # ---------------- AGENT CALL ----------------
     result = run_agent(
         user_input,
         retriever=st.session_state.retriever,

@@ -3,8 +3,9 @@ langchain
 langchain-community
 langchain-core
 langchain-text-splitters
-langgraph
 faiss-cpu
+sentence-transformers
 pypdf
+duckduckgo-search
 groq
 python-dotenv
